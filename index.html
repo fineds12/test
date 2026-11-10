@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>개인 업무관리 칸반보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom minimalist scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 2px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+        
+        /* Dragging visuals */
+        .dragging {
+            opacity: 0.5;
+            border: 2px dashed #475569;
+        }
+        .drag-over {
+            background-color: #e2e8f0;
+            border: 2px dashed #334155;
+        }
+
+        /* Typography & base styles */
+        body {
+            font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+
+        /* Prevent text selection while dragging */
+        .task-card {
+            user-select: none;
+            transition: box-shadow 0.2s ease;
+        }
+        .task-card:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-sm">
+
+    <!-- Header & Dashboard Stats -->
+    <header class="bg-slate-800 text-white p-4 shrink-0 shadow-md z-10">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 class="text-xl font-bold tracking-tight">개인 업무관리 칸반보드</h1>
+            <div class="flex flex-wrap gap-4 text-xs bg-slate-900/50 p-2 rounded-sm border border-slate-700">
+                <div class="flex flex-col items-center px-2">
+                    <span class="text-slate-400">전체</span>
+                    <span id="stat-total" class="font-bold text-lg">0</span>
+                </div>
+                <div class="flex flex-col items-center px-2 border-l border-slate-700">
+                    <span class="text-slate-400">진행 중</span>
+                    <span id="stat-inprog" class="font-bold text-lg text-blue-400">0</span>
+                </div>
+                <div class="flex flex-col items-center px-2 border-l border-slate-700">
+                    <span class="text-slate-400">완료</span>
+                    <span id="stat-done" class="font-bold text-lg text-green-400">0</span>
+                </div>
+                <div class="flex flex-col items-center px-2 border-l border-slate-700">
+                    <span class="text-slate-400">완료율</span>
+                    <span id="stat-percent" class="font-bold text-lg">0%</span>
+                </div>
+                <div class="flex flex-col items-center px-2 border-l border-slate-700">
+                    <span class="text-slate-400">마감 임박/지연</span>
+                    <span id="stat-imminent" class="font-bold text-lg text-red-400">0</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Toolbar: Filters & Actions -->
+    <div class="bg-white border-b border-gray-200 shrink-0 shadow-sm z-0">
+        <div class="max-w-7xl mx-auto p-3 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+            
+            <!-- Filters -->
+            <div class="flex flex-wrap gap-2" id="filter-buttons">
+                <button data-filter="all" class="filter-btn px-3 py-1.5 bg-slate-700 text-white rounded-sm text-xs transition-colors hover:bg-slate-600">전체</button>
+                <button data-filter="today" class="filter-btn px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-sm text-xs transition-colors hover:bg-gray-50">오늘 할 일</button>
+                <button data-filter="week" class="filter-btn px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-sm text-xs transition-colors hover:bg-gray-50">이번 주</button>
+                <button data-filter="imminent" class="filter-btn px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-sm text-xs transition-colors hover:bg-gray-50">마감 임박</button>
+                <button data-filter="high" class="filter-btn px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-sm text-xs transition-colors hover:bg-gray-50">중요 업무</button>
+                <button data-filter="done" class="filter-btn px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-sm text-xs transition-colors hover:bg-gray-50">완료 업무</button>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-wrap gap-2 w-full lg:w-auto justify-end">
+                <button onclick="openModal()" class="px-4 py-1.5 bg-slate-800 text-white font-medium rounded-sm text-xs hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    새 업무 추가
+                </button>
+                <button onclick="generateReport()" class="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-medium rounded-sm text-xs hover:bg-slate-50 transition-colors shadow-sm">주간 보고 보기</button>
+                <div class="h-6 w-px bg-gray-300 hidden lg:block mx-1"></div>
+                <button onclick="promptClearDone()" class="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-sm text-xs hover:bg-gray-50 transition-colors">완료 정리</button>
+                <button onclick="promptResetAll()" class="px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-sm text-xs hover:bg-red-50 transition-colors">데이터 초기화</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Board Area -->
+    <main class="flex-1 overflow-x-auto p-4 md:p-6 bg-slate-50">
+        <div class="flex flex-row gap-4 h-full min-w-[1024px] max-w-7xl mx-auto">
+            
+            <!-- Column: 할 일 -->
+            <div class="flex-1 flex flex-col bg-gray-100 rounded-sm border border-gray-200 shadow-sm max-h-full">
+                <div class="p-3 border-b border-gray-200 bg-white rounded-t-sm flex justify-between items-center">
+                    <h2 class="font-bold text-gray-700 flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-slate-400"></div>할 일
+                    </h2>
+                    <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-sm" id="count-todo">0</span>
+                </div>
+                <div class="flex-1 p-2 overflow-y-auto kanban-column" id="todo" ondragover="allowDrop(event)" ondrop="drop(event)" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+                    <!-- Cards injected here -->
+                </div>
+            </div>
+
+            <!-- Column: 진행 중 -->
+            <div class="flex-1 flex flex-col bg-gray-100 rounded-sm border border-gray-200 shadow-sm max-h-full">
+                <div class="p-3 border-b border-gray-200 bg-white rounded-t-sm flex justify-between items-center">
+                    <h2 class="font-bold text-gray-700 flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-blue-500"></div>진행 중
+                    </h2>
+                    <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-sm" id="count-in-progress">0</span>
+                </div>
+                <div class="flex-1 p-2 overflow-y-auto kanban-column" id="in-progress" ondragover="allowDrop(event)" ondrop="drop(event)" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+                </div>
+            </div>
+
+            <!-- Column: 검토 -->
+            <div class="flex-1 flex flex-col bg-gray-100 rounded-sm border border-gray-200 shadow-sm max-h-full">
+                <div class="p-3 border-b border-gray-200 bg-white rounded-t-sm flex justify-between items-center">
+                    <h2 class="font-bold text-gray-700 flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-amber-500"></div>검토
+                    </h2>
+                    <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-sm" id="count-review">0</span>
+                </div>
+                <div class="flex-1 p-2 overflow-y-auto kanban-column" id="review" ondragover="allowDrop(event)" ondrop="drop(event)" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+                </div>
+            </div>
+
+            <!-- Column: 완료 -->
+            <div class="flex-1 flex flex-col bg-gray-100 rounded-sm border border-gray-200 shadow-sm max-h-full">
+                <div class="p-3 border-b border-gray-200 bg-white rounded-t-sm flex justify-between items-center">
+                    <h2 class="font-bold text-gray-700 flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-green-500"></div>완료
+                    </h2>
+                    <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-sm" id="count-done">0</span>
+                </div>
+                <div class="flex-1 p-2 overflow-y-auto kanban-column" id="done" ondragover="allowDrop(event)" ondrop="drop(event)" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <!-- Task Edit/Add Modal -->
+    <div id="taskModal" class="fixed inset-0 bg-slate-900/60 hidden z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-lg rounded-sm shadow-xl flex flex-col max-h-full">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-lg text-slate-800" id="modalTitle">새 업무 추가</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-700">&times; 닫기</button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1">
+                <form id="taskForm" class="space-y-4">
+                    <input type="hidden" id="taskId">
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">업무명 *</label>
+                        <input type="text" id="taskTitle" required class="w-full border border-gray-300 p-2 rounded-sm focus:ring-1 focus:ring-slate-500 focus:border-slate-500 outline-none text-sm bg-white">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">마감일 *</label>
+                            <input type="date" id="taskDueDate" required class="w-full border border-gray-300 p-2 rounded-sm focus:ring-1 focus:ring-slate-500 outline-none text-sm bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">담당자/협업자</label>
+                            <input type="text" id="taskAssignee" class="w-full border border-gray-300 p-2 rounded-sm focus:ring-1 focus:ring-slate-500 outline-none text-sm bg-white" placeholder="예: 본인, 유관부서">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">중요도</label>
+                            <select id="taskPriority" class="w-full border border-gray-300 p-2 rounded-sm focus:ring-1 focus:ring-slate-500 outline-none text-sm bg-white">
+                                <option value="높음">높음</option>
+                                <option value="보통" selected>보통</option>
+                                <option value="낮음">낮음</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">업무 유형</label>
+                            <select id="taskType" class="w-full border border-gray-300 p-2 rounded-sm focus:ring-1 focus:ring-slate-500 outline-none text-sm bg-white">
+                                <option value="보고">보고</option>
+                                <option value="회의">회의</option>
+                                <option value="자료작성">자료작성</option>
+                                <option value="요청사항">요청사항</option>
+                                <option value="개인업무" selected>개인업무</option>
+                                <option value="기타">기타</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">진행 상태 (모바일 이동용)</label>
+                        <select id="taskStatus" class="w-full border border-gray-300 p-2 rounded-sm focus:ring-1 focus:ring-slate-500 outline-none text-sm bg-slate-50">
+                            <option value="todo">할 일</option>
+                            <option value="in-progress">진행 중</option>
+                            <option value="review">검토</option>
+                            <option value="done">완료</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">상세 메모</label>
+                        <textarea id="taskMemo" rows="3" class="w-full border border-gray-300 p-2 rounded-sm focus:ring-1 focus:ring-slate-500 outline-none text-sm bg-white" placeholder="업무 관련 상세 내용을 입력하세요."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-slate-50 flex justify-end gap-2">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-sm text-gray-700 hover:bg-gray-50 transition-colors">취소</button>
+                <button type="button" onclick="saveTask()" class="px-4 py-2 bg-slate-800 text-white rounded-sm hover:bg-slate-700 transition-colors">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weekly Report Modal -->
+    <div id="reportModal" class="fixed inset-0 bg-slate-900/60 hidden z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-2xl rounded-sm shadow-xl flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-lg text-slate-800">주간 업무보고 생성</h3>
+                <button onclick="closeReportModal()" class="text-gray-400 hover:text-gray-700">&times; 닫기</button>
+            </div>
+            <div class="p-4 flex-1 overflow-y-auto">
+                <p class="text-xs text-gray-500 mb-2">아래 내용을 복사하여 이메일이나 문서에 붙여넣기 하세요.</p>
+                <textarea id="reportContent" class="w-full h-[50vh] p-3 border border-gray-300 rounded-sm text-sm font-mono bg-slate-50 outline-none resize-none" readonly></textarea>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-slate-50 flex justify-end gap-2">
+                <button onclick="copyReport()" class="px-4 py-2 bg-slate-800 text-white rounded-sm hover:bg-slate-700 transition-colors flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    클립보드 복사
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Message Box -->
+    <div id="confirmModal" class="fixed inset-0 bg-slate-900/60 hidden z-50 flex justify-center items-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-sm shadow-xl flex flex-col transform scale-95 transition-transform duration-100 ease-out" id="confirmBox">
+            <div class="p-5">
+                <h3 class="font-bold text-lg text-slate-800 mb-2" id="confirmTitle">확인</h3>
+                <p class="text-sm text-gray-600" id="confirmMessage">정말 실행하시겠습니까?</p>
+            </div>
+            <div class="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+                <button onclick="closeConfirm()" class="px-4 py-1.5 bg-white border border-gray-300 rounded-sm text-gray-700 hover:bg-gray-100 transition-colors text-xs font-medium">취소</button>
+                <button id="confirmActionBtn" class="px-4 py-1.5 bg-red-600 text-white rounded-sm hover:bg-red-700 transition-colors text-xs font-medium">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Message Box -->
+    <div id="alertModal" class="fixed inset-0 bg-slate-900/40 hidden z-[60] flex justify-center items-center p-4">
+        <div class="bg-white w-full max-w-xs rounded-sm shadow-xl flex flex-col">
+            <div class="p-4">
+                <p class="text-sm text-gray-800 text-center font-medium mt-2" id="alertMessage">알림 메시지</p>
+            </div>
+            <div class="p-3 flex justify-center">
+                <button onclick="closeAlert()" class="px-6 py-1.5 bg-slate-800 text-white rounded-sm hover:bg-slate-700 transition-colors text-xs">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Data & Initialization ---
+        let tasks = [];
+        let currentFilter = 'all';
+        let draggedTaskId = null;
+
+        // Base date calculation to make samples relevant regardless of when they are opened
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const strToday = `${yyyy}-${mm}-${dd}`;
+        
+        let tomorrowDate = new Date(today);
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const strTomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+        
+        let nextWeekDate = new Date(today);
+        nextWeekDate.setDate(nextWeekDate.getDate() + 5);
+        const strNextWeek = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, '0')}-${String(nextWeekDate.getDate()).padStart(2, '0')}`;
+        
+        let pastDate = new Date(today);
+        pastDate.setDate(pastDate.getDate() - 3);
+        const strPast = `${pastDate.getFullYear()}-${String(pastDate.getMonth() + 1).padStart(2, '0')}-${String(pastDate.getDate()).padStart(2, '0')}`;
+
+        const sampleData = [
+            { id: 1, title: "2026 양자내성암호 시범전환 사례집 초안 작성", memo: "목차 구성 및 1장 초안 작성 완료하기", type: "자료작성", priority: "높음", status: "todo", assignee: "본인", dueDate: strToday },
+            { id: 2, title: "분야별 암호체계 자산 식별 기준 가이드 1차 검토", memo: "유관부서 피드백 종합 후 검토 의견서 작성", type: "검토", priority: "높음", status: "review", assignee: "유관부서", dueDate: strTomorrow },
+            { id: 3, title: "KCMVP 인증 관련 양자내성암호 모듈 현황 파악", memo: "국내외 인증 획득 현황 조사", type: "개인업무", priority: "보통", status: "in-progress", assignee: "본인", dueDate: strNextWeek },
+            { id: 4, title: "양자암호기술팀 주간 업무 회의 자료 준비", memo: "주간 진행사항 취합", type: "회의", priority: "보통", status: "done", assignee: "본인", dueDate: strPast },
+            { id: 5, title: "CBOM 기반 자산 식별 방안 적용 가능성 문의", memo: "타부서 시스템 적용 환경 질의", type: "요청사항", priority: "낮음", status: "in-progress", assignee: "타부서 담당자", dueDate: strNextWeek }
+        ];
+
+        // --- Core Functions ---
+        function init() {
+            const savedTasks = localStorage.getItem('kanban_tasks');
+            if (savedTasks) {
+                try {
+                    tasks = JSON.parse(savedTasks);
+                } catch(e) {
+                    tasks = [...sampleData];
+                }
+            } else {
+                tasks = [...sampleData];
+                saveData();
+            }
+            
+            setupFilterListeners();
+            renderBoard();
+        }
+
+        function saveData() {
+            localStorage.setItem('kanban_tasks', JSON.stringify(tasks));
+        }
+
+        // --- Date Utilities ---
+        function parseDate(dateStr) {
+            if(!dateStr) return new Date(9999,0,1);
+            const d = new Date(dateStr);
+            d.setHours(0,0,0,0);
+            return d;
+        }
+
+        function getTodayMidnight() {
+            const d = new Date();
+            d.setHours(0,0,0,0);
+            return d;
+        }
+
+        function isToday(dateStr) {
+            return parseDate(dateStr).getTime() === getTodayMidnight().getTime();
+        }
+
+        function isTomorrow(dateStr) {
+            const tmr = getTodayMidnight();
+            tmr.setDate(tmr.getDate() + 1);
+            return parseDate(dateStr).getTime() === tmr.getTime();
+        }
+
+        function isOverdue(dateStr) {
+            return parseDate(dateStr).getTime() < getTodayMidnight().getTime();
+        }
+
+        function isThisWeek(dateStr) {
+            const d = parseDate(dateStr);
+            const today = getTodayMidnight();
+            const dayOfWeek = today.getDay(); // 0(Sun) ~ 6(Sat)
+            
+            // Calculate start (Monday) and end (Sunday) of current week
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+            
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+            return d >= startOfWeek && d <= endOfWeek;
+        }
+
+        function isImminent(dateStr) {
+            return isToday(dateStr) || isTomorrow(dateStr) || isOverdue(dateStr);
+        }
+
+        // --- Rendering Logic ---
+        function renderBoard() {
+            // Clear columns
+            document.getElementById('todo').innerHTML = '';
+            document.getElementById('in-progress').innerHTML = '';
+            document.getElementById('review').innerHTML = '';
+            document.getElementById('done').innerHTML = '';
+
+            let filteredTasks = tasks;
+
+            // Apply Filters
+            if (currentFilter === 'today') {
+                filteredTasks = tasks.filter(t => isToday(t.dueDate));
+            } else if (currentFilter === 'week') {
+                filteredTasks = tasks.filter(t => isThisWeek(t.dueDate));
+            } else if (currentFilter === 'imminent') {
+                filteredTasks = tasks.filter(t => isImminent(t.dueDate) && t.status !== 'done');
+            } else if (currentFilter === 'high') {
+                filteredTasks = tasks.filter(t => t.priority === '높음');
+            } else if (currentFilter === 'done') {
+                filteredTasks = tasks.filter(t => t.status === 'done');
+            }
+
+            const counts = { todo: 0, 'in-progress': 0, review: 0, done: 0 };
+            
+            let totalActualTasks = tasks.length;
+            let totalDoneTasks = tasks.filter(t => t.status === 'done').length;
+            let totalInProgTasks = tasks.filter(t => t.status === 'in-progress').length;
+            let totalImminent = tasks.filter(t => isImminent(t.dueDate) && t.status !== 'done').length;
+
+            filteredTasks.forEach(task => {
+                if(counts[task.status] !== undefined) {
+                    counts[task.status]++;
+                    const card = createCardElement(task);
+                    document.getElementById(task.status).appendChild(card);
+                }
+            });
+
+            // Update column counts
+            document.getElementById('count-todo').textContent = counts.todo;
+            document.getElementById('count-in-progress').textContent = counts['in-progress'];
+            document.getElementById('count-review').textContent = counts.review;
+            document.getElementById('count-done').textContent = counts.done;
+
+            // Update Header Stats (based on ALL tasks, not just filtered)
+            document.getElementById('stat-total').textContent = totalActualTasks;
+            document.getElementById('stat-inprog').textContent = totalInProgTasks;
+            document.getElementById('stat-done').textContent = totalDoneTasks;
+            const pct = totalActualTasks === 0 ? 0 : Math.round((totalDoneTasks / totalActualTasks) * 100);
+            document.getElementById('stat-percent').textContent = pct + '%';
+            document.getElementById('stat-imminent').textContent = totalImminent;
+        }
+
+        function createCardElement(task) {
+            const card = document.createElement('div');
+            card.className = 'task-card bg-white border border-gray-300 p-3 mb-2 rounded-sm cursor-grab relative group';
+            card.draggable = true;
+            card.id = `task-${task.id}`;
+            
+            // Event listeners for Drag
+            card.addEventListener('dragstart', handleDragStart);
+            card.addEventListener('dragend', handleDragEnd);
+
+            // Logic for highlighting dates
+            let dateColorClass = 'text-gray-500';
+            let dateText = task.dueDate;
+            let highlightBorder = '';
+
+            if (task.status !== 'done') {
+                if (isOverdue(task.dueDate)) {
+                    dateColorClass = 'text-red-600 font-bold';
+                    dateText = task.dueDate + ' (지연)';
+                    highlightBorder = 'border-l-4 border-l-red-500';
+                } else if (isToday(task.dueDate)) {
+                    dateColorClass = 'text-orange-600 font-bold';
+                    dateText = '오늘 마감';
+                    highlightBorder = 'border-l-4 border-l-orange-500';
+                } else if (isTomorrow(task.dueDate)) {
+                    dateColorClass = 'text-amber-600 font-medium';
+                    dateText = '내일 마감';
+                }
+            } else {
+                 dateColorClass = 'text-gray-400 line-through';
+            }
+
+            if(highlightBorder) {
+                card.className = `task-card bg-white border border-gray-300 ${highlightBorder} p-3 mb-2 rounded-sm cursor-grab relative group`;
+            }
+
+            let priorityColor = 'bg-gray-100 text-gray-600';
+            if (task.priority === '높음') priorityColor = 'bg-red-50 text-red-600 border border-red-100';
+            if (task.priority === '낮음') priorityColor = 'bg-blue-50 text-blue-600 border border-blue-100';
+
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-1.5">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-sm bg-slate-100 border border-slate-200 text-slate-600 font-medium">${task.type}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-sm ${priorityColor}">${task.priority}</span>
+                </div>
+                <h4 class="font-bold text-sm text-slate-800 leading-tight pr-4 break-words">${escapeHTML(task.title)}</h4>
+                
+                ${task.memo ? `<p class="text-xs text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">${escapeHTML(task.memo)}</p>` : ''}
+                
+                <div class="text-[11px] mt-3 flex justify-between items-center border-t border-gray-100 pt-2">
+                    <div class="flex items-center gap-1 text-slate-600">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        <span class="truncate max-w-[80px]">${escapeHTML(task.assignee || '미지정')}</span>
+                    </div>
+                    <div class="flex items-center gap-1 ${dateColorClass}">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <span>${dateText}</span>
+                    </div>
+                </div>
+
+                <!-- Hover actions -->
+                <div class="absolute top-2 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 bg-white/90 p-1 rounded backdrop-blur-sm border border-gray-100 shadow-sm">
+                    <button onclick="editTask(${task.id})" class="text-slate-500 hover:text-slate-800 p-0.5" title="수정">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    </button>
+                    <button onclick="promptDeleteTask(${task.id})" class="text-red-400 hover:text-red-600 p-0.5" title="삭제">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            `;
+            return card;
+        }
+
+        // --- HTML Escaping for security ---
+        function escapeHTML(str) {
+            if(!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
+        // --- Drag and Drop Logic ---
+        function handleDragStart(e) {
+            draggedTaskId = parseInt(e.target.id.replace('task-', ''));
+            e.dataTransfer.setData('text/plain', draggedTaskId);
+            e.dataTransfer.effectAllowed = 'move';
+            setTimeout(() => e.target.classList.add('dragging'), 0);
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+            document.querySelectorAll('.kanban-column').forEach(col => col.classList.remove('drag-over'));
+            draggedTaskId = null;
+        }
+
+        function allowDrop(e) {
+            e.preventDefault();
+        }
+
+        function dragEnter(e) {
+            e.preventDefault();
+            if(e.currentTarget.classList.contains('kanban-column')) {
+                e.currentTarget.classList.add('drag-over');
+            }
+        }
+
+        function dragLeave(e) {
+            if(e.currentTarget.classList.contains('kanban-column')) {
+                e.currentTarget.classList.remove('drag-over');
+            }
+        }
+
+        function drop(e) {
+            e.preventDefault();
+            const column = e.currentTarget;
+            column.classList.remove('drag-over');
+            
+            const newStatus = column.id;
+            if (!['todo', 'in-progress', 'review', 'done'].includes(newStatus)) return;
+
+            if (draggedTaskId) {
+                const taskIndex = tasks.findIndex(t => t.id === draggedTaskId);
+                if (taskIndex > -1) {
+                    tasks[taskIndex].status = newStatus;
+                    saveData();
+                    renderBoard();
+                }
+            }
+        }
+
+        // --- Filtering ---
+        function setupFilterListeners() {
+            const btns = document.querySelectorAll('.filter-btn');
+            btns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    // Reset styling
+                    btns.forEach(b => {
+                        b.classList.remove('bg-slate-700', 'text-white');
+                        b.classList.add('bg-white', 'text-gray-700');
+                    });
+                    // Apply active styling
+                    const target = e.target;
+                    target.classList.remove('bg-white', 'text-gray-700');
+                    target.classList.add('bg-slate-700', 'text-white');
+                    
+                    currentFilter = target.getAttribute('data-filter');
+                    renderBoard();
+                });
+            });
+        }
+
+        // --- Modal & Form Logic ---
+        const taskModal = document.getElementById('taskModal');
+        const taskForm = document.getElementById('taskForm');
+
+        function openModal() {
+            document.getElementById('modalTitle').textContent = '새 업무 추가';
+            taskForm.reset();
+            document.getElementById('taskId').value = '';
+            document.getElementById('taskDueDate').value = strToday; // Default today
+            taskModal.classList.remove('hidden');
+            document.getElementById('taskTitle').focus();
+        }
+
+        function closeModal() {
+            taskModal.classList.add('hidden');
+        }
+
+        function editTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if(!task) return;
+
+            document.getElementById('modalTitle').textContent = '업무 수정';
+            document.getElementById('taskId').value = task.id;
+            document.getElementById('taskTitle').value = task.title;
+            document.getElementById('taskDueDate').value = task.dueDate;
+            document.getElementById('taskAssignee').value = task.assignee;
+            document.getElementById('taskPriority').value = task.priority;
+            document.getElementById('taskType').value = task.type;
+            document.getElementById('taskStatus').value = task.status;
+            document.getElementById('taskMemo').value = task.memo;
+
+            taskModal.classList.remove('hidden');
+        }
+
+        function saveTask() {
+            if (!taskForm.checkValidity()) {
+                taskForm.reportValidity();
+                return;
+            }
+
+            const idVal = document.getElementById('taskId').value;
+            const newTask = {
+                title: document.getElementById('taskTitle').value.trim(),
+                dueDate: document.getElementById('taskDueDate').value,
+                assignee: document.getElementById('taskAssignee').value.trim(),
+                priority: document.getElementById('taskPriority').value,
+                type: document.getElementById('taskType').value,
+                status: document.getElementById('taskStatus').value,
+                memo: document.getElementById('taskMemo').value.trim(),
+            };
+
+            if (idVal) {
+                // Edit
+                const idx = tasks.findIndex(t => t.id === parseInt(idVal));
+                if (idx > -1) {
+                    newTask.id = tasks[idx].id;
+                    tasks[idx] = newTask;
+                }
+            } else {
+                // Add
+                newTask.id = Date.now(); // simple unique ID
+                tasks.push(newTask);
+            }
+
+            saveData();
+            renderBoard();
+            closeModal();
+        }
+
+        // --- Custom Confirm Modal Logic ---
+        let currentConfirmAction = null;
+        const confirmModal = document.getElementById('confirmModal');
+        const confirmBox = document.getElementById('confirmBox');
+
+        function openConfirm(title, message, actionCallback, isDanger=false) {
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            
+            const btn = document.getElementById('confirmActionBtn');
+            if(isDanger) {
+                btn.className = "px-4 py-1.5 bg-red-600 text-white rounded-sm hover:bg-red-700 transition-colors text-xs font-medium";
+            } else {
+                btn.className = "px-4 py-1.5 bg-slate-800 text-white rounded-sm hover:bg-slate-700 transition-colors text-xs font-medium";
+            }
+
+            currentConfirmAction = actionCallback;
+            confirmModal.classList.remove('hidden');
+            setTimeout(() => confirmBox.classList.remove('scale-95'), 10);
+        }
+
+        function closeConfirm() {
+            confirmBox.classList.add('scale-95');
+            setTimeout(() => {
+                confirmModal.classList.add('hidden');
+                currentConfirmAction = null;
+            }, 100);
+        }
+
+        document.getElementById('confirmActionBtn').addEventListener('click', () => {
+            if (currentConfirmAction) currentConfirmAction();
+            closeConfirm();
+        });
+
+        // --- Custom Alert Modal Logic ---
+        const alertModal = document.getElementById('alertModal');
+        function showAlert(msg) {
+            document.getElementById('alertMessage').textContent = msg;
+            alertModal.classList.remove('hidden');
+        }
+        function closeAlert() {
+            alertModal.classList.add('hidden');
+        }
+
+
+        // --- Delete / Clear / Reset ---
+        function promptDeleteTask(id) {
+            openConfirm('업무 삭제', '이 업무를 삭제하시겠습니까? 복구할 수 없습니다.', () => {
+                tasks = tasks.filter(t => t.id !== id);
+                saveData();
+                renderBoard();
+            }, true);
+        }
+
+        function promptClearDone() {
+            const doneCount = tasks.filter(t => t.status === 'done').length;
+            if (doneCount === 0) {
+                showAlert('정리할 완료 업무가 없습니다.');
+                return;
+            }
+            openConfirm('완료 업무 정리', `완료된 업무 ${doneCount}건을 삭제하시겠습니까?`, () => {
+                tasks = tasks.filter(t => t.status !== 'done');
+                saveData();
+                renderBoard();
+            });
+        }
+
+        function promptResetAll() {
+            openConfirm('데이터 초기화', '모든 업무 데이터를 삭제하고 샘플 데이터로 복구하시겠습니까?', () => {
+                localStorage.removeItem('kanban_tasks');
+                init(); // Reloads sample data
+            }, true);
+        }
+
+        // --- Weekly Report Generator ---
+        const reportModal = document.getElementById('reportModal');
+        const reportContent = document.getElementById('reportContent');
+
+        function generateReport() {
+            const doneTasks = tasks.filter(t => t.status === 'done' && isThisWeek(t.dueDate)); // Consider done in this week, or all done if preferred. Let's list all done currently in board.
+            const allDone = tasks.filter(t => t.status === 'done');
+            const inProgTasks = tasks.filter(t => t.status === 'in-progress');
+            const issueTasks = tasks.filter(t => t.status === 'review' || (isOverdue(t.dueDate) && t.status !== 'done'));
+            const todoTasks = tasks.filter(t => t.status === 'todo');
+
+            let report = `[주간 업무 보고 - ${yyyy}.${mm}.${dd}]\n\n`;
+
+            report += `■ [이번 주 완료 업무]\n`;
+            if (allDone.length === 0) report += `  - 해당 없음\n`;
+            allDone.forEach(t => report += `  - ${t.title} (${t.assignee || '미지정'})\n`);
+            report += `\n`;
+
+            report += `■ [진행 중 업무]\n`;
+            if (inProgTasks.length === 0) report += `  - 해당 없음\n`;
+            inProgTasks.forEach(t => report += `  - ${t.title} [진행 중] (마감: ${t.dueDate})\n`);
+            report += `\n`;
+
+            report += `■ [주요 이슈 및 검토 필요]\n`;
+            if (issueTasks.length === 0) report += `  - 특이사항 없음\n`;
+            issueTasks.forEach(t => {
+                let note = t.status === 'review' ? '검토중' : '마감지연';
+                report += `  - ${t.title} [${note}]\n`;
+            });
+            report += `\n`;
+
+            report += `■ [다음 주 예정 업무]\n`;
+            if (todoTasks.length === 0) report += `  - 해당 없음\n`;
+            todoTasks.forEach(t => report += `  - ${t.title} (${t.priority} 중요도)\n`);
+
+            reportContent.value = report;
+            reportModal.classList.remove('hidden');
+        }
+
+        function closeReportModal() {
+            reportModal.classList.add('hidden');
+        }
+
+        function copyReport() {
+            reportContent.select();
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            showAlert('보고서 내용이 클립보드에 복사되었습니다.');
+        }
+
+        // Initialize App on load
+        window.onload = init;
+
+    </script>
+</body>
+</html>
